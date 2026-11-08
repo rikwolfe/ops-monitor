@@ -27,7 +27,7 @@ jobs:
         run: |
           git config user.name "ops-monitor"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if ! git diff --quiet -- state/; then
+          if [ -n "$(git status --porcelain state/)" ]; then
             git add state/
             git commit -m "state: site status changed"
             git pull --rebase --quiet
