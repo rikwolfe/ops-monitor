@@ -1,0 +1,6 @@
+{
+  "spend_errors": {
+    "Anthropic": "no ANTHROPIC_ADMIN_KEY secret"
+  },
+  "updated": "2026-11-08T11:37:27+00:00"
+}
