@@ -38,8 +38,15 @@ RETRIES = 2
 YELLOW_EUR, RED_EUR = 20.0, 100.0
 YELLOW_MUL, RED_MUL = 3.0, 10.0
 
-BQ_PROJECT = "rwolfe-watchdog"
-BQ_DATASET = "billing_export"
+BQ_PROJECT = "rwolfe-watchdog"  # where the queries run (ops-monitor SA has jobUser here)
+# One standard billing export per billing account; Google only allows a dataset
+# in a project on that same account. The SA has read access on each dataset.
+BQ_EXPORTS = [
+    "rwolfe-watchdog.billing_export",                # Wolfe Business Development
+    "braintoss-website.billing_export",              # Braintoss
+    "ef2-learning-companion-487101.billing_export",  # EF2 Learning Companion
+    "gen-lang-client-0815954328.billing_export",     # Bespoke Software Inc
+]
 AWS_ACCOUNTS = ["444625565274"]
 
 
@@ -178,26 +185,33 @@ def days_window():
 
 
 def gcp_spend(start, target):
-    """{project_id: {date: eur}} from the BigQuery billing export, or raises."""
-    sql = f"""
-      SELECT IFNULL(project.id, '(no project)') AS project,
-             CAST(DATE(usage_start_time, 'Europe/Amsterdam') AS STRING) AS day,
-             SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS amount,
-             ANY_VALUE(currency) AS currency
-      FROM `{BQ_PROJECT}.{BQ_DATASET}.gcp_billing_export_v1_*`
-      WHERE DATE(usage_start_time, 'Europe/Amsterdam') BETWEEN '{start}' AND '{target}'
-        AND _PARTITIONTIME >= TIMESTAMP_SUB(TIMESTAMP('{start}'), INTERVAL 2 DAY)
-      GROUP BY project, day"""
-    out = subprocess.run(
-        ["bq", f"--project_id={BQ_PROJECT}", "--location=EU", "query", "--quiet",
-         "--use_legacy_sql=false", "--format=json", "--max_rows=10000", sql],
-        capture_output=True, text=True)
-    if out.returncode != 0:
-        msg = (out.stdout + out.stderr).strip()
-        if "Not found" in msg or "does not match any table" in msg:
-            raise RuntimeError("no billing export tables yet")
-        raise RuntimeError(msg[:300])
-    rows = json.loads(out.stdout or "[]")
+    """{project_id: {date: eur}} from the BigQuery billing exports, or raises."""
+    rows, empty = [], []
+    for dataset in BQ_EXPORTS:
+        sql = f"""
+          SELECT IFNULL(project.id, '(no project)') AS project,
+                 CAST(DATE(usage_start_time, 'Europe/Amsterdam') AS STRING) AS day,
+                 SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS amount,
+                 ANY_VALUE(currency) AS currency
+          FROM `{dataset}.gcp_billing_export_v1_*`
+          WHERE DATE(usage_start_time, 'Europe/Amsterdam') BETWEEN '{start}' AND '{target}'
+            AND _PARTITIONTIME >= TIMESTAMP_SUB(TIMESTAMP('{start}'), INTERVAL 2 DAY)
+          GROUP BY project, day"""
+        out = subprocess.run(
+            ["bq", f"--project_id={BQ_PROJECT}", "--location=EU", "query", "--quiet",
+             "--use_legacy_sql=false", "--format=json", "--max_rows=10000", sql],
+            capture_output=True, text=True)
+        if out.returncode != 0:
+            msg = " ".join((out.stdout + out.stderr).split())
+            if "Not found" in msg or "does not match any table" in msg:
+                empty.append(dataset)
+                continue
+            raise RuntimeError(f"{dataset}: {msg[:250]}")
+        rows += json.loads(out.stdout or "[]")
+    if len(empty) == len(BQ_EXPORTS):
+        raise RuntimeError("no billing export tables yet")
+    if empty:
+        print(f"GCP: no export tables yet in {', '.join(empty)}")
     fx = None
     result = {}
     for r in rows:
