@@ -8,7 +8,7 @@ on:
 
 permissions:
   contents: write
-  actions: write   # to start repair.yml when a DNS zone stops being served
+  issues: write   # opens/closes `incident` issues with the proposed fix
 
 concurrency:
   group: state-writer

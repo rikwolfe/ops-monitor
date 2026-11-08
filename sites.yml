@@ -46,13 +46,13 @@ domains:
   - {name: presage-ai.org,               ns: b, project: presage-ai-site}
   - {name: gpcompanion.ai,               ns: a, project: ef2-learning-companion-487101}
 
-# Projects whose billing must stay on (DNS zones or site hosting), checked
-# hourly by .github/workflows/repair.yml. repair: true = if billing is off,
-# link it back to the Wolfe Business Development billing account on its own.
-# Anything else only alerts. wolfe-nl-site is left out: it runs on the free
-# Firebase plan, without billing, on purpose.
+# Projects whose billing must stay on (DNS zones or site hosting). Read by
+# `monitor.py billing`, which Claude runs with Rik's sign-in after an alert:
+# it proposes the fix, Rik approves it in Claude. relink: true = the fix is
+# linking it back to the Wolfe Business Development billing account.
+# wolfe-nl-site is left out: it runs on the free Firebase plan on purpose.
 billing:
-  - {project: gen-lang-client-0815954328,    repair: true}   # Bespoke Software Inc: most zones
-  - {project: presage-ai-site,               repair: true}
-  - {project: richard-wolfe-nl,              repair: true}
-  - {project: ef2-learning-companion-487101, repair: false}  # own EF2 billing account
+  - {project: gen-lang-client-0815954328,    relink: true}   # Bespoke Software Inc: most zones
+  - {project: presage-ai-site,               relink: true}
+  - {project: richard-wolfe-nl,              relink: true}
+  - {project: ef2-learning-companion-487101, relink: false}  # own EF2 billing account
