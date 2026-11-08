@@ -66,6 +66,7 @@
       "status": "up"
     }
   },
+  "incidents": {},
   "sites": {
     "https://bespokesoftware.nl/": {
       "cert_ok": true,
