@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # to start repair.yml when a DNS zone stops being served
 
 concurrency:
   group: state-writer
@@ -23,6 +24,7 @@ jobs:
       - name: Check sites
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          GH_TOKEN: ${{ github.token }}
         run: python3 monitor.py uptime
       - name: Commit state if it changed
         run: |

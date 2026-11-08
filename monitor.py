@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """ops-monitor: uptime, TLS expiry and cloud-spend checks that alert via ntfy.
 
-Usage: monitor.py uptime | spend | weekly | test
+Usage: monitor.py uptime | postcheck | billing [--dry-run] [--simulate-off=PROJECT]
+                  | spend | weekly | test
 
 Secrets come from the environment (GitHub Actions secrets), never from files:
   NTFY_TOPIC            ntfy.sh topic (works as a password)
@@ -28,6 +29,7 @@ import yaml
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(ROOT, "state", "status.json")
 SPEND_STATE_FILE = os.path.join(ROOT, "state", "spend.json")
+REPAIR_STATE_FILE = os.path.join(ROOT, "state", "repair.json")
 SITES_FILE = os.path.join(ROOT, "sites.yml")
 
 # Strikingly resets connections for anything that doesn't look like a browser.
@@ -54,6 +56,10 @@ BQ_EXPORTS = [
 # Bespoke Software Inc billing account closed 8 Nov 2026; its project now bills
 # to Wolfe Business Development, so its old export gets no new rows.
 AWS_ACCOUNTS = ["444625565274"]
+
+# Auto-repair links a project back to this account and to nothing else.
+REPAIR_BILLING_ACCOUNT = "017AA8-04A2E1-158420"  # Wolfe Business Development
+REPAIR_COOLDOWN_H = 24
 
 
 # ---------- helpers ----------
@@ -90,6 +96,96 @@ def save_state(state, path=STATE_FILE):
 
 def now_iso():
     return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
+
+
+def load_config():
+    with open(SITES_FILE) as f:
+        return yaml.safe_load(f)
+
+
+# ---------- DNS (authoritative) ----------
+
+def dig(name, rtype, server):
+    """(status, answers) straight from an authoritative server, no recursion/cache."""
+    out = subprocess.run(["dig", "+norec", "+time=5", "+tries=2", rtype, name, "@" + server],
+                         capture_output=True, text=True)
+    text = out.stdout
+    if "status: " not in text:
+        return "TIMEOUT", []
+    status = text.split("status: ", 1)[1].split(",", 1)[0]
+    answers, in_answer = [], False
+    for line in text.splitlines():
+        if line.startswith(";; ANSWER SECTION"):
+            in_answer = True
+        elif in_answer and not line.strip():
+            break
+        elif in_answer and not line.startswith(";"):
+            answers.append(line.split()[-1])
+    return status, answers
+
+
+def check_domain(d):
+    """Return (ok, problem). Asks the zone's own nameservers; one healthy NS is enough."""
+    servers = [f"ns-cloud-{d['ns']}{i}.googledomains.com" for i in (1, 2)]
+    results = [dig(d["name"], "SOA", ns) for ns in servers]
+    good = next((r for r in results if r[0] == "NOERROR" and r[1]), None)
+    if not good:
+        status = next((r[0] for r in results if r[0] != "TIMEOUT"), "TIMEOUT")
+        return False, f"DNS {status}"
+    if d.get("mail"):
+        for ns in servers:
+            status, mx = dig(d["name"], "MX", ns)
+            if status == "NOERROR":
+                return (True, "") if mx else (False, "no MX records")
+        return False, "MX lookup failed"
+    return True, ""
+
+
+def dns_cause(problem, project):
+    if problem in ("DNS REFUSED", "DNS SERVFAIL"):
+        return (f"Google Cloud DNS no longer serves the zone ({problem.split()[1]}); "
+                f"most likely billing is off on project {project}")
+    if problem == "DNS NXDOMAIN":
+        return f"zone or record removed in project {project}"
+    if problem == "DNS TIMEOUT":
+        return "nameservers did not answer"
+    return problem
+
+
+def run_dns_checks(domains):
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        return dict(zip([d["name"] for d in domains], pool.map(check_domain, domains)))
+
+
+def domain_for(host, domains):
+    return next((d for d in domains if host == d["name"] or host.endswith("." + d["name"])), None)
+
+
+def diagnose(detail, dns_problem, project):
+    """Likely cause of an HTTP failure, for the alert text."""
+    if dns_problem:
+        return dns_cause(dns_problem, project)
+    if detail.startswith("HTTP 5"):
+        return "hosting returns a server error"
+    if detail.startswith("HTTP 404"):
+        return "hosting returns 404 (site not deployed or removed?)"
+    if "CERTIFICATE" in detail or "SSL" in detail:
+        return "TLS certificate problem"
+    if "Name or service not known" in detail or "nodename nor servname" in detail:
+        return "DNS lookup failed"
+    if "timed out" in detail.lower():
+        return "timeout: host up but not answering"
+    return detail
+
+
+def trigger_repair():
+    """Ask repair.yml to run now; it checks billing itself and repairs only allowlisted projects."""
+    if not os.environ.get("GH_TOKEN"):
+        print("repair not triggered: no GH_TOKEN")
+        return
+    out = subprocess.run(["gh", "workflow", "run", "repair.yml", "--ref", "main"],
+                         capture_output=True, text=True)
+    print("repair workflow triggered" if out.returncode == 0 else f"repair trigger failed: {out.stderr.strip()}")
 
 
 # ---------- uptime ----------
@@ -134,11 +230,42 @@ def cert_days_left(host):
 def run_uptime():
     """Alert only on confirmed changes: DOWN after DOWN_AFTER_RUNS failed runs in
     a row, Recovered only after a confirmed DOWN. Single blips stay in the log."""
-    with open(SITES_FILE) as f:
-        sites = yaml.safe_load(f)["sites"]
+    config = load_config()
+    sites, domains = config["sites"], config.get("domains", [])
     state = load_state()
     sites_state = state.setdefault("sites", {})
     changed = False
+
+    # DNS first, and without the 2-run delay: an authoritative REFUSED/SERVFAIL is
+    # never a blip, and resolver caches hide it for hours (8 Nov 2026).
+    dns_state = state.setdefault("dns", {})
+    dns_results = run_dns_checks(domains)
+    need_repair = False
+    for d in domains:
+        name = d["name"]
+        ok, problem = dns_results[name]
+        prev = dns_state.get(name, {})
+        # A timeout can be the runner's network: that one does wait for a 2nd run.
+        fails = 0 if ok else prev.get("fails", 0) + 1
+        bad = not ok and (problem != "DNS TIMEOUT" or fails >= 2)
+        status = "down" if bad else ("up" if ok else prev.get("status", "up"))
+        print(f"DNS {name}: {'OK' if ok else problem}; confirmed {status}")
+        if status == "down" and prev.get("status") != "down":
+            ntfy(f"DNS DOWN: {name}", f"{name}: {problem}. Cause: {dns_cause(problem, d['project'])}."
+                 + (" Auto-repair started." if problem in ("DNS REFUSED", "DNS SERVFAIL") else ""),
+                 "urgent", "rotating_light")
+            need_repair = need_repair or problem in ("DNS REFUSED", "DNS SERVFAIL")
+        elif status == "up" and prev.get("status") == "down":
+            ntfy(f"DNS recovered: {name}", f"{name} answers again", "default", "white_check_mark")
+        new = {"status": status, "fails": min(fails, 2), "problem": problem}
+        if new != {k: prev.get(k) for k in new}:
+            dns_state[name] = new
+            changed = True
+    for gone in set(dns_state) - {d["name"] for d in domains}:
+        del dns_state[gone]
+        changed = True
+    if need_repair:
+        trigger_repair()
 
     # In parallel, so retries with backoff on a few sites can't blow the job timeout.
     with ThreadPoolExecutor(max_workers=8) as pool:
@@ -158,8 +285,11 @@ def run_uptime():
         status = prev.get("status") or ("down" if failed else "up")
         if status == "up" and fails >= DOWN_AFTER_RUNS:
             status = "down"
-            ntfy(f"DOWN: {host}", f"{url} is down ({DOWN_AFTER_RUNS} checks in a row): {detail}",
-                 "high", "rotating_light")
+            dom = domain_for(host, domains)
+            dns_problem = dom and (dns_results[dom["name"]][1] or None)
+            cause = diagnose(detail, dns_problem, dom["project"] if dom else "?")
+            ntfy(f"DOWN: {host}", f"{url} is down ({DOWN_AFTER_RUNS} checks in a row): {detail}. "
+                 f"Likely cause: {cause}.", "high", "rotating_light")
         elif status == "down" and not failed:
             status = "up"
             ntfy(f"Recovered: {host}", f"{url} is back up ({detail})", "default", "white_check_mark")
@@ -194,6 +324,125 @@ def run_uptime():
         state["updated"] = now_iso()
     save_state(state)
     return changed
+
+
+# ---------- postcheck ----------
+
+def run_postcheck(only_project=None):
+    """DNS + MX + HTTP for everything, about a minute, no state, no ntfy.
+    Returns (ok, summary). Run after every infra change, and after a repair."""
+    config = load_config()
+    domains = [d for d in config.get("domains", []) if not only_project or d["project"] == only_project]
+    names = {d["name"] for d in domains}
+    sites = [s for s in config["sites"]
+             if not only_project or (domain_for(urllib.parse.urlparse(s["url"]).hostname, domains))]
+    dns = run_dns_checks(domains)
+    global BACKOFF
+    saved, BACKOFF = BACKOFF, [5]
+    try:
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            http = dict(zip([s["url"] for s in sites], pool.map(check_http, [s["url"] for s in sites])))
+    finally:
+        BACKOFF = saved
+    bad = [f"{n}: {p}" for n, (ok, p) in sorted(dns.items()) if not ok]
+    bad += [f"{u}: {d}" for u, (r, d) in http.items() if r == "down"]
+    for n, (ok, p) in sorted(dns.items()):
+        print(f"DNS  {'OK  ' if ok else 'FAIL'} {n} {p}")
+    for u, (r, d) in http.items():
+        print(f"HTTP {'OK  ' if r != 'down' else 'FAIL'} {u} {d}")
+    summary = (f"all OK ({len(names)} domains, {len(sites)} sites)" if not bad
+               else f"{len(bad)} failing: " + "; ".join(bad[:6]))
+    print("postcheck:", summary)
+    summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_file:
+        with open(summary_file, "a") as f:
+            f.write(f"**postcheck:** {summary}\n")
+    return not bad, summary
+
+
+# ---------- billing guard + auto-repair ----------
+
+def billing_enabled(project):
+    out = subprocess.run(["gcloud", "billing", "projects", "describe", project, "--format=json"],
+                         capture_output=True, text=True)
+    if out.returncode != 0:
+        raise RuntimeError(" ".join(out.stderr.split())[:200])
+    return bool(json.loads(out.stdout).get("billingEnabled"))
+
+
+def run_billing(dry_run=False, simulate_off=()):
+    """Hourly: every project in sites.yml `billing:` must have billing on. If it is
+    off and the project has repair: true, link it back to REPAIR_BILLING_ACCOUNT
+    (at most once per REPAIR_COOLDOWN_H), run the postcheck and report. That is
+    the only thing this job can change."""
+    config = load_config()
+    state = load_state(REPAIR_STATE_FILE)
+    projects = state.setdefault("projects", {})
+    changed = False
+    for entry in config.get("billing", []):
+        project, may_repair = entry["project"], entry.get("repair", False)
+        prev = projects.get(project, {})
+        try:
+            on = billing_enabled(project) and project not in simulate_off
+        except Exception as e:  # noqa: BLE001 - logged every run, ntfy once per new error
+            print(f"{project}: billing not readable: {e}")
+            if prev.get("error") is None and not dry_run:
+                ntfy("ops-monitor billing check unavailable", f"{project}: {e}", "low", "information_source")
+            if prev.get("error") is None:
+                projects[project] = {**prev, "error": str(e)[:200]}
+                changed = True
+            continue
+        print(f"{project}: billing {'on' if on else 'OFF'}")
+        if on:
+            if prev.get("billing") == "off":
+                ntfy(f"Billing on again: {project}", f"{project} has billing again", "default", "white_check_mark")
+            new = {**prev, "billing": "on", "error": None}
+        else:
+            new = {**prev, "billing": "off", "error": None}
+            last = prev.get("last_repair")
+            cooled = not last or (dt.datetime.now(dt.timezone.utc)
+                                  - dt.datetime.fromisoformat(last)).total_seconds() > REPAIR_COOLDOWN_H * 3600
+            cmd = ["gcloud", "billing", "projects", "link", project,
+                   f"--billing-account={REPAIR_BILLING_ACCOUNT}"]
+            if may_repair and cooled:
+                if dry_run:
+                    print("DRY RUN, would run:", " ".join(cmd))
+                    print(f"DRY RUN, would then postcheck {project} and ntfy the result")
+                    continue
+                new["last_repair"] = now_iso()
+                out = subprocess.run(cmd, capture_output=True, text=True)
+                if out.returncode != 0:
+                    err = " ".join(out.stderr.split())[:200]
+                    ntfy(f"Repair failed: {project}", f"Could not link billing of {project}: {err}",
+                         "urgent", "rotating_light")
+                else:
+                    new["billing"] = "on"
+                    ok, summary = False, ""
+                    for _ in range(10):  # Cloud DNS takes about a minute to serve again
+                        time.sleep(30)
+                        ok, summary = run_postcheck(project)
+                        if ok:
+                            break
+                    if ok:
+                        ntfy(f"Hersteld: {project}", f"Hersteld: billing van {project} teruggekoppeld "
+                             f"aan Wolfe Business Development; postcheck {summary}", "high", "wrench")
+                    else:
+                        ntfy(f"Repair did not help: {project}", f"Billing of {project} is linked again, "
+                             f"but the postcheck still fails. Cause: {summary}", "urgent", "rotating_light")
+            elif prev.get("billing") != "off":
+                why = ("already repaired once in the last 24 hours" if may_repair
+                       else "not on the auto-repair list")
+                if dry_run:
+                    print(f"DRY RUN, would alert: billing off on {project} ({why})")
+                    continue
+                ntfy(f"BILLING OFF: {project}", f"Billing is off on {project}; DNS and hosting there stop. "
+                     f"No auto-repair: {why}.", "urgent", "rotating_light,moneybag")
+        if new != prev and not dry_run:
+            projects[project] = new
+            changed = True
+    if changed:
+        state["updated"] = now_iso()
+        save_state(state, REPAIR_STATE_FILE)
 
 
 # ---------- spend ----------
@@ -397,6 +646,12 @@ def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     if cmd == "uptime":
         run_uptime()
+    elif cmd == "postcheck":
+        sys.exit(0 if run_postcheck()[0] else 1)
+    elif cmd == "billing":
+        sim = [a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--simulate-off=") and "=" in a]
+        sim = [p for x in sim for p in x.split(",") if p]
+        run_billing(dry_run="--dry-run" in sys.argv[2:] or bool(sim), simulate_off=sim)
     elif cmd == "spend":
         run_spend()
     elif cmd == "weekly":

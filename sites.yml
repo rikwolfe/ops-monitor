@@ -27,3 +27,32 @@ sites:
 #
 # Braintoss (braintoss.app, braintoss.com, send.braintoss.app) is watched by
 # rikwolfe/braintoss-monitor, on its own ntfy topic (handover 8 Nov 2026).
+
+# DNS zones, checked every uptime run straight at their own Google Cloud DNS
+# nameservers (no resolver cache, so a zone that stops being served shows up at
+# once). project = the GCP project holding the zone; mail = must have MX records.
+domains:
+  - {name: wolfe.nl,                     ns: a, project: gen-lang-client-0815954328, mail: true}
+  - {name: richardwolfe.nl,              ns: b, project: gen-lang-client-0815954328, mail: true}
+  - {name: kawanaki.com,                 ns: d, project: gen-lang-client-0815954328, mail: true}
+  - {name: bespokesoftware.nl,           ns: a, project: gen-lang-client-0815954328, mail: true}
+  - {name: speedmailing.nl,              ns: a, project: gen-lang-client-0815954328, mail: true}
+  - {name: speedmailing.com,             ns: a, project: gen-lang-client-0815954328, mail: true}
+  - {name: wolfebusinessdevelopment.com, ns: a, project: gen-lang-client-0815954328}
+  - {name: amsterdamcricketacademy.nl,   ns: b, project: gen-lang-client-0815954328}
+  - {name: otoman.nl,                    ns: a, project: gen-lang-client-0815954328}
+  - {name: egbertenannette.nl,           ns: c, project: gen-lang-client-0815954328}
+  - {name: robertwolfe.nl,               ns: e, project: gen-lang-client-0815954328}
+  - {name: presage-ai.org,               ns: b, project: presage-ai-site}
+  - {name: gpcompanion.ai,               ns: a, project: ef2-learning-companion-487101}
+
+# Projects whose billing must stay on (DNS zones or site hosting), checked
+# hourly by .github/workflows/repair.yml. repair: true = if billing is off,
+# link it back to the Wolfe Business Development billing account on its own.
+# Anything else only alerts. wolfe-nl-site is left out: it runs on the free
+# Firebase plan, without billing, on purpose.
+billing:
+  - {project: gen-lang-client-0815954328,    repair: true}   # Bespoke Software Inc: most zones
+  - {project: presage-ai-site,               repair: true}
+  - {project: richard-wolfe-nl,              repair: true}
+  - {project: ef2-learning-companion-487101, repair: false}  # own EF2 billing account

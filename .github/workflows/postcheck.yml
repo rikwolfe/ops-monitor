@@ -1,0 +1,18 @@
+name: postcheck
+
+# DNS (straight at the zones' own nameservers) + MX + HTTP for every domain and
+# site in sites.yml, in about a minute. Run it after every infra change.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install --quiet pyyaml
+      - run: python3 monitor.py postcheck
