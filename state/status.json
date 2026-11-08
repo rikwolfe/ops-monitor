@@ -6,12 +6,6 @@
       "since": "2026-11-08T09:51:36+00:00",
       "status": "up"
     },
-    "https://braintoss.app/": {
-      "cert_ok": true,
-      "detail": "HTTP 200",
-      "since": "2026-11-08T09:51:37+00:00",
-      "status": "up"
-    },
     "https://gpcompanion.ai/": {
       "cert_ok": true,
       "detail": "HTTP 200",
@@ -109,5 +103,5 @@
       "status": "up"
     }
   },
-  "updated": "2026-11-08T09:51:39+00:00"
+  "updated": "2026-11-08T16:28:40+00:00"
 }
