@@ -1,4 +1,71 @@
 {
+  "dns": {
+    "amsterdamcricketacademy.nl": {
+      "fails": 0,
+      "problem": "",
+      "status": "up"
+    },
+    "bespokesoftware.nl": {
+      "fails": 0,
+      "problem": "",
+      "status": "up"
+    },
+    "egbertenannette.nl": {
+      "fails": 0,
+      "problem": "",
+      "status": "up"
+    },
+    "gpcompanion.ai": {
+      "fails": 0,
+      "problem": "",
+      "status": "up"
+    },
+    "kawanaki.com": {
+      "fails": 0,
+      "problem": "",
+      "status": "up"
+    },
+    "otoman.nl": {
+      "fails": 0,
+      "problem": "",
+      "status": "up"
+    },
+    "presage-ai.org": {
+      "fails": 0,
+      "problem": "",
+      "status": "up"
+    },
+    "richardwolfe.nl": {
+      "fails": 0,
+      "problem": "",
+      "status": "up"
+    },
+    "robertwolfe.nl": {
+      "fails": 0,
+      "problem": "",
+      "status": "up"
+    },
+    "speedmailing.com": {
+      "fails": 0,
+      "problem": "",
+      "status": "up"
+    },
+    "speedmailing.nl": {
+      "fails": 0,
+      "problem": "",
+      "status": "up"
+    },
+    "wolfe.nl": {
+      "fails": 0,
+      "problem": "",
+      "status": "up"
+    },
+    "wolfebusinessdevelopment.com": {
+      "fails": 0,
+      "problem": "",
+      "status": "up"
+    }
+  },
   "sites": {
     "https://bespokesoftware.nl/": {
       "cert_ok": true,
@@ -103,5 +170,5 @@
       "status": "up"
     }
   },
-  "updated": "2026-11-08T16:28:40+00:00"
+  "updated": "2026-11-08T19:28:39+00:00"
 }
