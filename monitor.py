@@ -26,6 +26,7 @@ import yaml
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(ROOT, "state", "status.json")
+SPEND_STATE_FILE = os.path.join(ROOT, "state", "spend.json")
 SITES_FILE = os.path.join(ROOT, "sites.yml")
 
 # Strikingly resets connections for curl/python default user agents.
@@ -60,16 +61,16 @@ def ntfy(title, message, priority="default", tags=""):
         print(f"ntfy sent ({r.status}): {title}")
 
 
-def load_state():
+def load_state(path=STATE_FILE):
     try:
-        with open(STATE_FILE) as f:
+        with open(path) as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 
-def save_state(state):
-    with open(STATE_FILE, "w") as f:
+def save_state(state, path=STATE_FILE):
+    with open(path, "w") as f:
         json.dump(state, f, indent=2, sort_keys=True)
         f.write("\n")
 
@@ -307,7 +308,8 @@ def run_spend():
         ntfy("Spend warning", "\n".join(yellows), "default", "warning,moneybag")
 
     # Tell Rik once when a source starts or stops failing (not every day).
-    state = load_state()
+    # Own file, so it never conflicts with the uptime commits.
+    state = load_state(SPEND_STATE_FILE)
     prev = state.get("spend_errors", {})
     if set(errors) != set(prev):
         new = sorted(set(errors) - set(prev))
@@ -316,7 +318,7 @@ def run_spend():
         ntfy("ops-monitor spend sources changed", "\n".join(lines), "default", "information_source")
         state["spend_errors"] = errors
         state["updated"] = now_iso()
-        save_state(state)
+        save_state(state, SPEND_STATE_FILE)
 
 
 def run_weekly():
