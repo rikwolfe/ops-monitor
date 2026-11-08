@@ -1,1 +1,113 @@
-{}
+{
+  "sites": {
+    "https://bespokesoftware.nl/": {
+      "cert_ok": true,
+      "detail": "HTTP 200",
+      "since": "2026-11-08T09:51:36+00:00",
+      "status": "up"
+    },
+    "https://braintoss.app/": {
+      "cert_ok": true,
+      "detail": "HTTP 200",
+      "since": "2026-11-08T09:51:37+00:00",
+      "status": "up"
+    },
+    "https://gpcompanion.ai/": {
+      "cert_ok": true,
+      "detail": "HTTP 200",
+      "since": "2026-11-08T09:51:37+00:00",
+      "status": "up"
+    },
+    "https://handouts.richardwolfe.nl/": {
+      "cert_ok": true,
+      "detail": "HTTP 200",
+      "since": "2026-11-08T09:51:35+00:00",
+      "status": "up"
+    },
+    "https://kawanaki.com/": {
+      "cert_ok": true,
+      "detail": "HTTP 200",
+      "since": "2026-11-08T09:51:36+00:00",
+      "status": "up"
+    },
+    "https://presage-ai.org/": {
+      "cert_ok": true,
+      "detail": "HTTP 200",
+      "since": "2026-11-08T09:51:35+00:00",
+      "status": "up"
+    },
+    "https://richardwolfe.nl/": {
+      "cert_ok": true,
+      "detail": "HTTP 200",
+      "since": "2026-11-08T09:51:34+00:00",
+      "status": "up"
+    },
+    "https://speedmailing.com/": {
+      "cert_ok": true,
+      "detail": "HTTP 200",
+      "since": "2026-11-08T09:51:39+00:00",
+      "status": "up"
+    },
+    "https://speedmailing.nl/": {
+      "cert_ok": true,
+      "detail": "HTTP 200",
+      "since": "2026-11-08T09:51:38+00:00",
+      "status": "up"
+    },
+    "https://wolfe.nl/": {
+      "cert_ok": true,
+      "detail": "HTTP 200",
+      "since": "2026-11-08T09:51:33+00:00",
+      "status": "up"
+    },
+    "https://www.bespokesoftware.nl/": {
+      "cert_ok": true,
+      "detail": "HTTP 200",
+      "since": "2026-11-08T09:51:36+00:00",
+      "status": "up"
+    },
+    "https://www.gpcompanion.ai/": {
+      "cert_ok": true,
+      "detail": "HTTP 200",
+      "since": "2026-11-08T09:51:37+00:00",
+      "status": "up"
+    },
+    "https://www.kawanaki.com/": {
+      "cert_ok": true,
+      "detail": "HTTP 200",
+      "since": "2026-11-08T09:51:36+00:00",
+      "status": "up"
+    },
+    "https://www.presage-ai.org/": {
+      "cert_ok": true,
+      "detail": "HTTP 200",
+      "since": "2026-11-08T09:51:36+00:00",
+      "status": "up"
+    },
+    "https://www.richardwolfe.nl/": {
+      "cert_ok": true,
+      "detail": "HTTP 200",
+      "since": "2026-11-08T09:51:34+00:00",
+      "status": "up"
+    },
+    "https://www.speedmailing.com/": {
+      "cert_ok": true,
+      "detail": "HTTP 200",
+      "since": "2026-11-08T09:51:39+00:00",
+      "status": "up"
+    },
+    "https://www.speedmailing.nl/": {
+      "cert_ok": true,
+      "detail": "HTTP 200",
+      "since": "2026-11-08T09:51:38+00:00",
+      "status": "up"
+    },
+    "https://www.wolfe.nl/": {
+      "cert_ok": true,
+      "detail": "HTTP 200",
+      "since": "2026-11-08T09:51:34+00:00",
+      "status": "up"
+    }
+  },
+  "updated": "2026-11-08T09:51:39+00:00"
+}
