@@ -2,7 +2,8 @@ name: uptime
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    # Off the quarter hour: GitHub drops or delays many runs at :00/:15/:30/:45.
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
 
 permissions:

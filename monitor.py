@@ -20,6 +20,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -29,10 +30,14 @@ STATE_FILE = os.path.join(ROOT, "state", "status.json")
 SPEND_STATE_FILE = os.path.join(ROOT, "state", "spend.json")
 SITES_FILE = os.path.join(ROOT, "sites.yml")
 
-# Strikingly resets connections for curl/python default user agents.
-USER_AGENT = "Mozilla/5.0 (compatible; ops-monitor; +https://github.com/rikwolfe/ops-monitor)"
+# Strikingly resets connections for anything that doesn't look like a browser.
+USER_AGENT = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
 TLS_WARN_DAYS = 14
-RETRIES = 2
+TIMEOUT = 30
+BACKOFF = [5, 15, 30]       # seconds before each retry within one run
+DOWN_AFTER_RUNS = 2         # consecutive failed runs before a DOWN alert
+BLOCKED_AFTER_RUNS = 8      # 403/429 from bot protection counts as up for ~2 hours
 
 # Spend rules, same as the old watchdog.
 YELLOW_EUR, RED_EUR = 20.0, 100.0
@@ -45,8 +50,9 @@ BQ_EXPORTS = [
     "rwolfe-watchdog.billing_export",                # Wolfe Business Development
     "braintoss-website.billing_export",              # Braintoss
     "ef2-learning-companion-487101.billing_export",  # EF2 Learning Companion
-    "gen-lang-client-0815954328.billing_export",     # Bespoke Software Inc
 ]
+# Bespoke Software Inc billing account closed 8 Nov 2026; its project now bills
+# to Wolfe Business Development, so its old export gets no new rows.
 AWS_ACCOUNTS = ["444625565274"]
 
 
@@ -89,24 +95,31 @@ def now_iso():
 # ---------- uptime ----------
 
 def check_http(url):
-    """Return (ok, detail). Follows redirects; 2xx/3xx is ok."""
+    """Return (result, detail); result is "up", "blocked" (403/429) or "down".
+    Follows redirects; 2xx/3xx is up. Retries with backoff before giving up."""
     last = ""
-    for attempt in range(RETRIES + 1):
+    for attempt in range(len(BACKOFF) + 1):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-            with urllib.request.urlopen(req, timeout=20) as r:
+            req = urllib.request.Request(url, headers={
+                "User-Agent": USER_AGENT,
+                "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9,nl;q=0.8"})
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
                 if 200 <= r.status < 400:
-                    return True, f"HTTP {r.status}"
+                    return "up", f"HTTP {r.status}"
                 last = f"HTTP {r.status}"
         except urllib.error.HTTPError as e:
             if 300 <= e.code < 400:
-                return True, f"HTTP {e.code}"
+                return "up", f"HTTP {e.code}"
+            if e.code in (403, 429):
+                # Bot protection answering means the site itself is there.
+                return "blocked", f"HTTP {e.code} (blocked by bot protection)"
             last = f"HTTP {e.code}"
-        except Exception as e:  # noqa: BLE001 - any network failure counts as down
+        except Exception as e:  # noqa: BLE001 - any network failure counts as a failed try
             last = type(e).__name__ + ": " + str(e)[:120]
-        if attempt < RETRIES:
-            time.sleep(10)
-    return False, last
+        if attempt < len(BACKOFF):
+            time.sleep(BACKOFF[attempt])
+    return "down", last
 
 
 def cert_days_left(host):
@@ -119,41 +132,58 @@ def cert_days_left(host):
 
 
 def run_uptime():
+    """Alert only on confirmed changes: DOWN after DOWN_AFTER_RUNS failed runs in
+    a row, Recovered only after a confirmed DOWN. Single blips stay in the log."""
     with open(SITES_FILE) as f:
         sites = yaml.safe_load(f)["sites"]
     state = load_state()
     sites_state = state.setdefault("sites", {})
     changed = False
 
+    # In parallel, so retries with backoff on a few sites can't blow the job timeout.
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = dict(zip([s["url"] for s in sites], pool.map(check_http, [s["url"] for s in sites])))
+
     for site in sites:
         url = site["url"]
         host = urllib.parse.urlparse(url).hostname
-        ok, detail = check_http(url)
-        try:
-            days = cert_days_left(host)
-            cert_ok = days >= TLS_WARN_DAYS
-        except Exception as e:  # noqa: BLE001
-            days = None
-            if ok:
-                cert_ok, detail = False, f"TLS check failed: {type(e).__name__}"
-            else:  # site is down, we already alert on that
-                cert_ok = sites_state.get(url, {}).get("cert_ok", True)
-        print(f"{url}: {'UP' if ok else 'DOWN'} ({detail}); cert days left: {days}")
-
         prev = sites_state.get(url, {})
-        status = "up" if ok else "down"
-        if prev.get("status") and prev["status"] != status:
-            if status == "down":
-                ntfy(f"DOWN: {host}", f"{url} is down: {detail}", "high", "rotating_light")
-            else:
-                ntfy(f"Recovered: {host}", f"{url} is back up ({detail})", "default", "white_check_mark")
-        if prev.get("cert_ok", True) and not cert_ok and ok:
-            ntfy(f"TLS expiring: {host}", f"Certificate for {host} expires in {days} days", "high", "lock")
+        result, detail = results[url]
 
-        # Only write on a flip, so the state file (and git history) changes only then.
-        if status != prev.get("status") or cert_ok != prev.get("cert_ok"):
-            sites_state[url] = {"status": status, "cert_ok": cert_ok,
-                                "detail": detail, "since": now_iso()}
+        blocked = prev.get("blocked_runs", 0)
+        blocked = min(blocked + 1, BLOCKED_AFTER_RUNS) if result == "blocked" else 0
+        failed = result == "down" or (result == "blocked" and blocked >= BLOCKED_AFTER_RUNS)
+        fails = min(prev.get("fails", 0) + 1, DOWN_AFTER_RUNS) if failed else 0
+
+        status = prev.get("status") or ("down" if failed else "up")
+        if status == "up" and fails >= DOWN_AFTER_RUNS:
+            status = "down"
+            ntfy(f"DOWN: {host}", f"{url} is down ({DOWN_AFTER_RUNS} checks in a row): {detail}",
+                 "high", "rotating_light")
+        elif status == "down" and not failed:
+            status = "up"
+            ntfy(f"Recovered: {host}", f"{url} is back up ({detail})", "default", "white_check_mark")
+
+        cert_ok, days = prev.get("cert_ok", True), None
+        if result != "down":
+            try:
+                days = cert_days_left(host)
+                if prev.get("cert_ok", True) and days < TLS_WARN_DAYS:
+                    ntfy(f"TLS expiring: {host}", f"Certificate for {host} expires in {days} days",
+                         "high", "lock")
+                cert_ok = days >= TLS_WARN_DAYS
+            except Exception as e:  # noqa: BLE001 - a flaky TLS probe is logged, not alerted
+                print(f"{host}: TLS check failed: {type(e).__name__}")
+        print(f"{url}: {result.upper()} ({detail}); confirmed {status}; "
+              f"failed runs {fails}; cert days left: {days}")
+
+        # Only write when something changes, so the state file (and git history)
+        # stays quiet while everything is up.
+        new = {"status": status, "cert_ok": cert_ok, "fails": fails, "blocked_runs": blocked}
+        if any(new[k] != prev.get(k, 0 if k in ("fails", "blocked_runs") else None) for k in new):
+            new["detail"] = detail
+            new["since"] = now_iso() if status != prev.get("status") else prev.get("since", now_iso())
+            sites_state[url] = new
             changed = True
 
     for gone in set(sites_state) - {s["url"] for s in sites}:
@@ -186,7 +216,7 @@ def days_window():
 
 def gcp_spend(start, target):
     """{project_id: {date: eur}} from the BigQuery billing exports, or raises."""
-    rows, empty = [], []
+    rows, empty, failed = [], [], []
     for dataset in BQ_EXPORTS:
         sql = f"""
           SELECT IFNULL(project.id, '(no project)') AS project,
@@ -205,9 +235,13 @@ def gcp_spend(start, target):
             msg = " ".join((out.stdout + out.stderr).split())
             if "Not found" in msg or "does not match any table" in msg:
                 empty.append(dataset)
-                continue
-            raise RuntimeError(f"{dataset}: {msg[:250]}")
+            else:  # one unreadable export goes to the log; the others still count
+                failed.append(dataset)
+                print(f"GCP: {dataset} not readable: {msg[:250]}")
+            continue
         rows += json.loads(out.stdout or "[]")
+    if failed and len(failed) + len(empty) == len(BQ_EXPORTS):
+        raise RuntimeError(f"no billing export readable ({', '.join(failed)})")
     if len(empty) == len(BQ_EXPORTS):
         raise RuntimeError("no billing export tables yet")
     if empty:
@@ -323,15 +357,16 @@ def run_spend():
     elif yellows:
         ntfy("Spend warning", "\n".join(yellows), "default", "warning,moneybag")
 
-    # Tell Rik once when a source starts or stops failing (not every day).
+    # Source errors go to the log every day, but to ntfy only once per new
+    # error, so a source that stays unavailable never alerts again.
     # Own file, so it never conflicts with the uptime commits.
     state = load_state(SPEND_STATE_FILE)
     prev = state.get("spend_errors", {})
     if set(errors) != set(prev):
         new = sorted(set(errors) - set(prev))
-        fixed = sorted(set(prev) - set(errors))
-        lines = [f"{n} not readable: {errors[n]}" for n in new] + [f"{n} readable again" for n in fixed]
-        ntfy("ops-monitor spend sources changed", "\n".join(lines), "default", "information_source")
+        if new:
+            ntfy("ops-monitor spend source unavailable",
+                 "\n".join(f"{n} not readable: {errors[n]}" for n in new), "low", "information_source")
         state["spend_errors"] = errors
         state["updated"] = now_iso()
         save_state(state, SPEND_STATE_FILE)
