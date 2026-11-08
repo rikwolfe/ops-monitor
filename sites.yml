@@ -15,14 +15,15 @@ sites:
   - url: https://www.bespokesoftware.nl/
   - url: https://gpcompanion.ai/
   - url: https://www.gpcompanion.ai/
-  - url: https://braintoss.app/
   - url: https://speedmailing.nl/
   - url: https://www.speedmailing.nl/
   - url: https://speedmailing.com/
   - url: https://www.speedmailing.com/
 
 # Left out on purpose (known broken on 8 Nov 2026, would alert forever):
-#   www.braintoss.app        - Google Frontend 404, no domain mapping
 #   robertwolfe.nl (+www)    - Strikingly "under construction" 404
 #   amsterdamcricketacademy.nl, otoman.nl, egbertenannette.nl,
 #   wolfebusinessdevelopment.com - TransIP parking, certificate mismatch
+#
+# Braintoss (braintoss.app, braintoss.com, send.braintoss.app) is watched by
+# rikwolfe/braintoss-monitor, on its own ntfy topic (handover 8 Nov 2026).
