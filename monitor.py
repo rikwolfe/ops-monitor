@@ -212,6 +212,8 @@ def gcp_spend(start, target):
         raise RuntimeError("no billing export tables yet")
     if empty:
         print(f"GCP: no export tables yet in {', '.join(empty)}")
+    if not rows:
+        print("GCP: no data yet (export tables exist, still filling)")
     fx = None
     result = {}
     for r in rows:
