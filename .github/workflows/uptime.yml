@@ -1,0 +1,35 @@
+name: uptime
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: state-writer
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install --quiet pyyaml
+      - name: Check sites
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python3 monitor.py uptime
+      - name: Commit state if it changed
+        run: |
+          git config user.name "ops-monitor"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- state/; then
+            git add state/
+            git commit -m "state: site status changed"
+            git pull --rebase --quiet
+            git push
+          fi

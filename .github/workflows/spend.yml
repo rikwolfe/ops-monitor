@@ -1,0 +1,48 @@
+name: spend
+
+on:
+  schedule:
+    # 05:00 UTC = 06:00 Amsterdam in winter, 07:00 in summer
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: state-writer
+  cancel-in-progress: false
+
+jobs:
+  spend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install --quiet pyyaml
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/985166590169/locations/global/workloadIdentityPools/github/providers/ops-monitor
+          service_account: ops-monitor@rwolfe-watchdog.iam.gserviceaccount.com
+      - uses: google-github-actions/setup-gcloud@v2
+      - uses: aws-actions/configure-aws-credentials@v4
+        continue-on-error: true
+        with:
+          role-to-assume: arn:aws:iam::444625565274:role/ops-monitor-cost-read
+          aws-region: us-east-1
+      - name: Check spend
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          ANTHROPIC_ADMIN_KEY: ${{ secrets.ANTHROPIC_ADMIN_KEY }}
+        run: python3 monitor.py spend
+      - name: Commit state if it changed
+        run: |
+          git config user.name "ops-monitor"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- state/; then
+            git add state/
+            git commit -m "state: spend sources changed"
+            git pull --rebase --quiet
+            git push
+          fi

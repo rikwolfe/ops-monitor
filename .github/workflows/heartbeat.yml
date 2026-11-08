@@ -1,0 +1,28 @@
+name: heartbeat
+
+# GitHub disables scheduled workflows after 60 days without repo activity.
+# A monthly commit keeps them alive even when no site changes state.
+on:
+  schedule:
+    - cron: "0 4 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: state-writer
+  cancel-in-progress: false
+
+jobs:
+  beat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          date -u +%Y-%m-%dT%H:%M:%SZ > state/heartbeat.txt
+          git config user.name "ops-monitor"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/heartbeat.txt
+          git commit -m "heartbeat"
+          git push

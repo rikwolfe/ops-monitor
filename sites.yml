@@ -1,0 +1,28 @@
+# Public URLs checked every 15 minutes by .github/workflows/uptime.yml.
+# Nothing secret belongs in this file: this repo is public.
+# Each entry: url (required), name (optional label).
+sites:
+  - url: https://wolfe.nl/
+  - url: https://www.wolfe.nl/
+  - url: https://richardwolfe.nl/
+  - url: https://www.richardwolfe.nl/
+  - url: https://handouts.richardwolfe.nl/
+  - url: https://presage-ai.org/
+  - url: https://www.presage-ai.org/
+  - url: https://kawanaki.com/
+  - url: https://www.kawanaki.com/
+  - url: https://bespokesoftware.nl/
+  - url: https://www.bespokesoftware.nl/
+  - url: https://gpcompanion.ai/
+  - url: https://www.gpcompanion.ai/
+  - url: https://braintoss.app/
+  - url: https://speedmailing.nl/
+  - url: https://www.speedmailing.nl/
+  - url: https://speedmailing.com/
+  - url: https://www.speedmailing.com/
+
+# Left out on purpose (known broken on 8 Nov 2026, would alert forever):
+#   www.braintoss.app        - Google Frontend 404, no domain mapping
+#   robertwolfe.nl (+www)    - Strikingly "under construction" 404
+#   amsterdamcricketacademy.nl, otoman.nl, egbertenannette.nl,
+#   wolfebusinessdevelopment.com - TransIP parking, certificate mismatch

@@ -1,0 +1,17 @@
+name: test-ntfy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install --quiet pyyaml
+      - env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python3 monitor.py test
