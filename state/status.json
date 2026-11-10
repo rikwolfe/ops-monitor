@@ -111,8 +111,10 @@
       "status": "up"
     },
     "https://speedmailing.nl/": {
+      "blocked_runs": 0,
       "cert_ok": true,
-      "detail": "HTTP 200",
+      "detail": "URLError: <urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Hostname mismatch, certificate is not valid f",
+      "fails": 1,
       "since": "2026-11-08T09:51:38+00:00",
       "status": "up"
     },
@@ -153,14 +155,18 @@
       "status": "up"
     },
     "https://www.speedmailing.com/": {
+      "blocked_runs": 0,
       "cert_ok": true,
-      "detail": "HTTP 200",
+      "detail": "URLError: <urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Hostname mismatch, certificate is not valid f",
+      "fails": 1,
       "since": "2026-11-08T09:51:39+00:00",
       "status": "up"
     },
     "https://www.speedmailing.nl/": {
+      "blocked_runs": 0,
       "cert_ok": true,
-      "detail": "HTTP 200",
+      "detail": "URLError: <urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Hostname mismatch, certificate is not valid f",
+      "fails": 1,
       "since": "2026-11-08T09:51:38+00:00",
       "status": "up"
     },
@@ -171,5 +177,5 @@
       "status": "up"
     }
   },
-  "updated": "2026-11-08T19:28:39+00:00"
+  "updated": "2026-11-10T11:44:00+00:00"
 }
