@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ops-monitor: uptime, TLS expiry and cloud-spend checks that alert via ntfy.
 
-Usage: monitor.py uptime | postcheck | billing [--simulate-off=PROJECT] | spend | weekly | test
+Usage: monitor.py uptime | postcheck | mailauth [--report] | billing [--simulate-off=PROJECT] | spend | weekly | test
 
 Secrets come from the environment (GitHub Actions secrets), never from files:
   NTFY_TOPIC            ntfy.sh topic (works as a password)
@@ -25,9 +25,12 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
+import mailauth
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(ROOT, "state", "status.json")
 SPEND_STATE_FILE = os.path.join(ROOT, "state", "spend.json")
+MAIL_STATE_FILE = os.path.join(ROOT, "state", "mailauth.json")
 SITES_FILE = os.path.join(ROOT, "sites.yml")
 
 # Strikingly resets connections for anything that doesn't look like a browser.
@@ -450,6 +453,45 @@ def run_postcheck(only_project=None):
     return not bad, summary
 
 
+# ---------- mail authentication (SPF / DKIM / DMARC) ----------
+
+def run_mailauth(report_only=False):
+    """Daily. Alerts only when a domain's list of problems changes, so known gaps
+    don't nag; the weekly summary repeats the count. --report: print, no state."""
+    domains = load_config().get("domains", [])
+    results = mailauth.run(domains)
+    lines = []
+    for name, (problems, facts) in sorted(results.items()):
+        print(f"MAIL {'OK  ' if not problems else 'GAP '} {name}")
+        print(f"       SPF:   {facts.get('spf')}")
+        print(f"       DMARC: {facts.get('dmarc')}")
+        for p in problems:
+            print(f"       - {p}")
+        lines.append(f"| {name} | {'ok' if not problems else '<br>'.join(problems)} |")
+    clean = sum(1 for p, _ in results.values() if not p)
+    summary = f"{clean} of {len(results)} domains clean"
+    print("mailauth:", summary)
+    summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_file:
+        with open(summary_file, "a") as f:
+            f.write(f"**mail records:** {summary}\n\n| domain | result |\n|---|---|\n" + "\n".join(lines) + "\n")
+    if report_only:
+        return
+    state = load_state(MAIL_STATE_FILE)
+    prev = state.get("domains", {})
+    now = {n: sorted(p) for n, (p, _) in results.items()}
+    worse = {n: [x for x in p if x not in prev.get(n, [])] for n, p in now.items()}
+    worse = {n: p for n, p in worse.items() if p}
+    fixed = [n for n, p in now.items() if not p and prev.get(n)]
+    if worse and prev:  # the very first run only records the baseline
+        ntfy("Mail records changed", "\n".join(f"{n}: {'; '.join(p)}" for n, p in sorted(worse.items()))
+             + "\nZeg 'mail check' in Claude.", "high", "envelope")
+    if fixed:
+        ntfy("Mail records fixed", ", ".join(sorted(fixed)) + " now pass SPF/DKIM/DMARC", "low", "white_check_mark")
+    if now != prev:
+        save_state({"domains": now, "updated": now_iso()}, MAIL_STATE_FILE)
+
+
 # ---------- billing check (read-only) ----------
 
 def billing_enabled(project):
@@ -670,6 +712,11 @@ def run_weekly():
     data, errors = collect_all(start, target)
     week = [(start + dt.timedelta(days=i)).isoformat() for i in range(1, 8)]
     lines = [f"{up} of {len(sites)} sites ok" + (f"; down: {', '.join(down)}" if down else "")]
+    mail = load_state(MAIL_STATE_FILE).get("domains", {})
+    if mail:
+        gaps = sorted(n for n, p in mail.items() if p)
+        lines.append(f"mail records: {len(mail) - len(gaps)} of {len(mail)} domains clean"
+                     + (f"; gaps: {', '.join(gaps)}" if gaps else ""))
     for source in SOURCES:
         if source in errors:
             lines.append(f"{source}: not readable ({errors[source][:80]})")
@@ -685,6 +732,8 @@ def main():
         run_uptime()
     elif cmd == "postcheck":
         sys.exit(0 if run_postcheck()[0] else 1)
+    elif cmd == "mailauth":
+        run_mailauth(report_only="--report" in sys.argv[2:])
     elif cmd == "billing":
         sim = [a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--simulate-off=")]
         sim = [p for x in sim for p in x.split(",") if p]
