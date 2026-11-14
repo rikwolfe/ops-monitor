@@ -31,20 +31,24 @@ sites:
 # DNS zones, checked every uptime run straight at their own Google Cloud DNS
 # nameservers (no resolver cache, so a zone that stops being served shows up at
 # once). project = the GCP project holding the zone; mail = must have MX records.
+# mail_auth = checked daily by mailauth.yml (SPF, DKIM, DMARC): senders = who may
+# send mail for the domain (google, m365, mailerlite, firebase, ses; [] = parked,
+# never sends), dmarc = the policy we expect now. Raise dmarc here in the same
+# change that raises it in DNS, or the check will flag it.
 domains:
-  - {name: wolfe.nl,                     ns: a, project: gen-lang-client-0815954328, mail: true}
-  - {name: richardwolfe.nl,              ns: b, project: gen-lang-client-0815954328, mail: true}
-  - {name: kawanaki.com,                 ns: d, project: gen-lang-client-0815954328, mail: true}
-  - {name: bespokesoftware.nl,           ns: a, project: gen-lang-client-0815954328, mail: true}
-  - {name: speedmailing.nl,              ns: a, project: gen-lang-client-0815954328, mail: true}
-  - {name: speedmailing.com,             ns: a, project: gen-lang-client-0815954328, mail: true}
-  - {name: wolfebusinessdevelopment.com, ns: a, project: gen-lang-client-0815954328}
-  - {name: amsterdamcricketacademy.nl,   ns: b, project: gen-lang-client-0815954328}
-  - {name: otoman.nl,                    ns: a, project: gen-lang-client-0815954328}
-  - {name: egbertenannette.nl,           ns: c, project: gen-lang-client-0815954328}
-  - {name: robertwolfe.nl,               ns: e, project: gen-lang-client-0815954328}
-  - {name: presage-ai.org,               ns: b, project: presage-ai-site}
-  - {name: gpcompanion.ai,               ns: a, project: ef2-learning-companion-487101}
+  - {name: wolfe.nl,                     ns: a, project: gen-lang-client-0815954328, mail: true, mail_auth: {senders: [google], dmarc: none}}
+  - {name: richardwolfe.nl,              ns: b, project: gen-lang-client-0815954328, mail: true, mail_auth: {senders: [], dmarc: reject}}
+  - {name: kawanaki.com,                 ns: d, project: gen-lang-client-0815954328, mail: true, mail_auth: {senders: [google], dmarc: none}}
+  - {name: bespokesoftware.nl,           ns: a, project: gen-lang-client-0815954328, mail: true, mail_auth: {senders: [google], dmarc: none}}
+  - {name: speedmailing.nl,              ns: a, project: gen-lang-client-0815954328, mail: true, mail_auth: {senders: [m365, mailerlite], dmarc: none}}
+  - {name: speedmailing.com,             ns: a, project: gen-lang-client-0815954328, mail: true, mail_auth: {senders: [m365, mailerlite], dmarc: none}}
+  - {name: wolfebusinessdevelopment.com, ns: a, project: gen-lang-client-0815954328, mail_auth: {senders: [], dmarc: reject}}
+  - {name: amsterdamcricketacademy.nl,   ns: b, project: gen-lang-client-0815954328, mail_auth: {senders: [], dmarc: reject}}
+  - {name: otoman.nl,                    ns: a, project: gen-lang-client-0815954328, mail_auth: {senders: [], dmarc: reject}}
+  - {name: egbertenannette.nl,           ns: c, project: gen-lang-client-0815954328, mail_auth: {senders: [], dmarc: reject}}
+  - {name: robertwolfe.nl,               ns: e, project: gen-lang-client-0815954328, mail_auth: {senders: [], dmarc: reject}}
+  - {name: presage-ai.org,               ns: b, project: presage-ai-site, mail_auth: {senders: [], dmarc: reject}}
+  - {name: gpcompanion.ai,               ns: a, project: ef2-learning-companion-487101, mail_auth: {senders: [google, firebase], dmarc: none}}
 
 # Projects whose billing must stay on (DNS zones or site hosting). Read by
 # `monitor.py billing`, which Claude runs with Rik's sign-in after an alert:

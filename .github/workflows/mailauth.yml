@@ -1,0 +1,37 @@
+name: mailauth
+
+# SPF, DKIM and DMARC of every domain in sites.yml, asked at the zones' own
+# nameservers. ntfy only when a domain's problems change (new gap, or fixed).
+on:
+  schedule:
+    - cron: "17 5 * * *"   # 06:17 Amsterdam (winter)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: state-writer
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install --quiet pyyaml
+      - name: Check mail records
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python3 monitor.py mailauth
+      - name: Commit state if it changed
+        run: |
+          git config user.name "ops-monitor"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain state/)" ]; then
+            git add state/
+            git commit -m "state: mail records changed"
+            git pull --rebase --quiet
+            git push
+          fi

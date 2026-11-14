@@ -1,7 +1,8 @@
 name: postcheck
 
 # DNS (straight at the zones' own nameservers) + MX + HTTP for every domain and
-# site in sites.yml, in about a minute. Run it after every infra change.
+# site in sites.yml, in about a minute, plus a report of the mail records
+# (SPF/DKIM/DMARC, no alerts). Run it after every infra change.
 on:
   workflow_dispatch:
 
@@ -16,3 +17,6 @@ jobs:
       - uses: actions/checkout@v4
       - run: pip install --quiet pyyaml
       - run: python3 monitor.py postcheck
+      - name: Mail records (report only)
+        if: always()
+        run: python3 monitor.py mailauth --report
