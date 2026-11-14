@@ -1,0 +1,28 @@
+{
+  "domains": {
+    "amsterdamcricketacademy.nl": [],
+    "bespokesoftware.nl": [],
+    "egbertenannette.nl": [],
+    "gpcompanion.ai": [
+      "no DKIM key for google (google._domainkey)"
+    ],
+    "kawanaki.com": [
+      "no DKIM key for google (google._domainkey)"
+    ],
+    "otoman.nl": [],
+    "presage-ai.org": [],
+    "richardwolfe.nl": [],
+    "robertwolfe.nl": [],
+    "speedmailing.com": [
+      "no DKIM key for m365 (selector1._domainkey)",
+      "no DKIM key for m365 (selector2._domainkey)"
+    ],
+    "speedmailing.nl": [
+      "no DKIM key for m365 (selector1._domainkey)",
+      "no DKIM key for m365 (selector2._domainkey)"
+    ],
+    "wolfe.nl": [],
+    "wolfebusinessdevelopment.com": []
+  },
+  "updated": "2026-11-14T21:50:56+00:00"
+}
