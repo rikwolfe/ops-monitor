@@ -2,20 +2,45 @@ name: spend
 
 on:
   schedule:
-    # 05:00 UTC = 06:00 Amsterdam in winter, 07:00 in summer
-    - cron: "0 5 * * *"
+    # Fallback only. Cloud Scheduler dispatches at 06:00 Europe/Amsterdam;
+    # 06:00 UTC = 07:00 Amsterdam in winter, 08:00 in summer.
+    - cron: "0 6 * * *"
   workflow_dispatch:
 
 permissions:
+  actions: read   # guard job lists recent runs
   contents: write
   id-token: write
 
 concurrency:
-  group: state-writer
+  group: ${{ github.workflow }}
   cancel-in-progress: false
 
 jobs:
+  guard:
+    # Cloud Scheduler (rwolfe-watchdog) starts this workflow on time via
+    # workflow_dispatch. The cron above is only the fallback: a cron run steps
+    # aside when Scheduler already started a run in the last 20 hours.
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=true
+          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
+            since=$(date -u -d '-20 hours' +%Y-%m-%dT%H:%M:%SZ)
+            n=$(gh run list -R "$GITHUB_REPOSITORY" -w spend.yml -e workflow_dispatch --created ">=$since" --json databaseId -q length)
+            if [ "$n" -gt 0 ]; then run=false; echo "Scheduler already ran since $since; skipping."; fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
   spend:
+    needs: guard
+    if: needs.guard.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -43,6 +68,5 @@ jobs:
           if [ -n "$(git status --porcelain state/)" ]; then
             git add state/
             git commit -m "state: spend sources changed"
-            git pull --rebase --quiet
-            git push
+            for i in 1 2 3; do git pull --rebase --quiet && git push && break; sleep 5; done
           fi
