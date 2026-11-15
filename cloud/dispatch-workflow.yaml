@@ -1,0 +1,33 @@
+# Cloud Workflow ops-monitor-dispatch (rwolfe-watchdog, europe-west4).
+# Called by the Cloud Scheduler jobs ops-monitor-{uptime,spend,weekly} with
+# {"workflow": "<file>.yml"}. Reads the GitHub token from Secret Manager at run
+# time (never stored in Scheduler or here) and starts that GitHub workflow.
+main:
+  params: [args]
+  steps:
+    - allowList:
+        switch:
+          - condition: ${not(args.workflow in ["uptime.yml", "spend.yml", "weekly.yml"])}
+            raise: "workflow not allowed"
+    - getToken:
+        call: googleapis.secretmanager.v1.projects.secrets.versions.accessString
+        args:
+          project_id: rwolfe-watchdog
+          secret_id: github-dispatch-token
+          version: latest
+        result: token
+    - dispatch:
+        call: http.post
+        args:
+          url: ${"https://api.github.com/repos/rikwolfe/ops-monitor/actions/workflows/" + args.workflow + "/dispatches"}
+          headers:
+            Authorization: ${"Bearer " + token}
+            Accept: application/vnd.github+json
+            X-GitHub-Api-Version: "2022-11-28"
+            User-Agent: ops-monitor-scheduler
+          body:
+            ref: main
+          timeout: 30
+        result: resp
+    - done:
+        return: ${resp.code}

@@ -4,16 +4,45 @@ name: weekly
 # ops-monitor itself is broken.
 on:
   schedule:
-    # Monday 05:30 UTC = 06:30 Amsterdam in winter
-    - cron: "30 5 * * 1"
+    # Fallback only. Cloud Scheduler dispatches Monday 06:30 Europe/Amsterdam;
+    # 06:30 UTC = 07:30 Amsterdam in winter.
+    - cron: "30 6 * * 1"
   workflow_dispatch:
 
 permissions:
+  actions: read   # guard job lists recent runs
   contents: read
   id-token: write
 
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
+  guard:
+    # Cloud Scheduler (rwolfe-watchdog) starts this workflow on time via
+    # workflow_dispatch. The cron above is only the fallback: a cron run steps
+    # aside when Scheduler already started a run in the last 6 days.
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=true
+          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
+            since=$(date -u -d '-6 days' +%Y-%m-%dT%H:%M:%SZ)
+            n=$(gh run list -R "$GITHUB_REPOSITORY" -w weekly.yml -e workflow_dispatch --created ">=$since" --json databaseId -q length)
+            if [ "$n" -gt 0 ]; then run=false; echo "Scheduler already ran since $since; skipping."; fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
   summary:
+    needs: guard
+    if: needs.guard.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

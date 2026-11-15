@@ -2,20 +2,45 @@ name: uptime
 
 on:
   schedule:
-    # Off the quarter hour: GitHub drops or delays many runs at :00/:15/:30/:45.
+    # Fallback only. Cloud Scheduler dispatches at :00/:15/:30/:45; this cron is
+    # off the quarter hour because GitHub drops or delays many runs there.
     - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
 
 permissions:
+  actions: read   # guard job lists recent runs
   contents: write
   issues: write   # opens/closes `incident` issues with the proposed fix
 
 concurrency:
-  group: state-writer
+  group: ${{ github.workflow }}
   cancel-in-progress: false
 
 jobs:
+  guard:
+    # Cloud Scheduler (rwolfe-watchdog) starts this workflow on time via
+    # workflow_dispatch. The cron above is only the fallback: a cron run steps
+    # aside when Scheduler already started a run in the last 10 minutes.
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=true
+          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
+            since=$(date -u -d '-10 minutes' +%Y-%m-%dT%H:%M:%SZ)
+            n=$(gh run list -R "$GITHUB_REPOSITORY" -w uptime.yml -e workflow_dispatch --created ">=$since" --json databaseId -q length)
+            if [ "$n" -gt 0 ]; then run=false; echo "Scheduler already ran since $since; skipping."; fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
   check:
+    needs: guard
+    if: needs.guard.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -33,6 +58,5 @@ jobs:
           if [ -n "$(git status --porcelain state/)" ]; then
             git add state/
             git commit -m "state: site status changed"
-            git pull --rebase --quiet
-            git push
+            for i in 1 2 3; do git pull --rebase --quiet && git push && break; sleep 5; done
           fi
