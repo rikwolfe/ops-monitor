@@ -6,9 +6,7 @@
     "gpcompanion.ai": [
       "no DKIM key for google (google._domainkey)"
     ],
-    "kawanaki.com": [
-      "no DKIM key for google (google._domainkey)"
-    ],
+    "kawanaki.com": [],
     "otoman.nl": [],
     "presage-ai.org": [],
     "richardwolfe.nl": [],
@@ -18,5 +16,5 @@
     "wolfe.nl": [],
     "wolfebusinessdevelopment.com": []
   },
-  "updated": "2026-11-15T14:41:45+00:00"
+  "updated": "2026-11-15T14:46:58+00:00"
 }
