@@ -40,8 +40,8 @@ domains:
   - {name: richardwolfe.nl,              ns: b, project: gen-lang-client-0815954328, mail: true, mail_auth: {senders: [], dmarc: reject}}
   - {name: kawanaki.com,                 ns: d, project: gen-lang-client-0815954328, mail: true, mail_auth: {senders: [google], dmarc: none}}
   - {name: bespokesoftware.nl,           ns: a, project: gen-lang-client-0815954328, mail: true, mail_auth: {senders: [google], dmarc: none}}
-  - {name: speedmailing.nl,              ns: a, project: gen-lang-client-0815954328, mail: true, mail_auth: {senders: [m365, mailerlite], dmarc: none}}
-  - {name: speedmailing.com,             ns: a, project: gen-lang-client-0815954328, mail: true, mail_auth: {senders: [m365, mailerlite], dmarc: none}}
+  - {name: speedmailing.nl,              ns: a, project: gen-lang-client-0815954328, mail_auth: {senders: [], dmarc: reject}}
+  - {name: speedmailing.com,             ns: a, project: gen-lang-client-0815954328, mail_auth: {senders: [], dmarc: reject}}
   - {name: wolfebusinessdevelopment.com, ns: a, project: gen-lang-client-0815954328, mail_auth: {senders: [], dmarc: reject}}
   - {name: amsterdamcricketacademy.nl,   ns: b, project: gen-lang-client-0815954328, mail_auth: {senders: [], dmarc: reject}}
   - {name: otoman.nl,                    ns: a, project: gen-lang-client-0815954328, mail_auth: {senders: [], dmarc: reject}}
