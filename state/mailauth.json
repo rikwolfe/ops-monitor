@@ -13,16 +13,10 @@
     "presage-ai.org": [],
     "richardwolfe.nl": [],
     "robertwolfe.nl": [],
-    "speedmailing.com": [
-      "no DKIM key for m365 (selector1._domainkey)",
-      "no DKIM key for m365 (selector2._domainkey)"
-    ],
-    "speedmailing.nl": [
-      "no DKIM key for m365 (selector1._domainkey)",
-      "no DKIM key for m365 (selector2._domainkey)"
-    ],
+    "speedmailing.com": [],
+    "speedmailing.nl": [],
     "wolfe.nl": [],
     "wolfebusinessdevelopment.com": []
   },
-  "updated": "2026-11-14T21:50:56+00:00"
+  "updated": "2026-11-15T14:41:45+00:00"
 }
