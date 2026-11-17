@@ -21,7 +21,7 @@ SENDERS = {
     "google":     {"spf": "_spf.google.com",          "dkim": ["google"]},
     "m365":       {"spf": "spf.protection.outlook.com", "dkim": ["selector1", "selector2"]},
     "mailerlite": {"spf": "_spf.mlsend.com",          "dkim": ["ml"]},
-    "firebase":   {"spf": "_spf.firebasemail.com",    "dkim": []},
+    "firebase":   {"spf": "_spf.firebasemail.com",    "dkim": ["firebase1", "firebase2"]},
     "ses":        {"spf": "amazonses.com",            "dkim": []},
 }
 PARKED_SPF = "v=spf1 -all"
